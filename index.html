@@ -17,7 +17,7 @@
   <p><b>Ambil foto langsung dari kamera:</b></p>
   <input type="file" id="camera" accept="image/*" capture="environment"><br><br>
 
-  <img id="preview" width="250"><br><br>
+  <img id="preview" width="300"><br><br>
 
   <textarea id="laporan" rows="6" cols="40" readonly></textarea><br><br>
   <button id="send">Kirim ke WhatsApp</button>
@@ -26,17 +26,39 @@
     const preview = document.getElementById('preview');
     const laporan = document.getElementById('laporan');
 
-    function parseOCR(text) {
-      console.log("OCR Raw:", text);
+    // Fungsi crop gambar
+    function cropImage(img, x, y, w, h) {
+      let canvas = document.createElement("canvas");
+      let ctx = canvas.getContext("2d");
+      canvas.width = w;
+      canvas.height = h;
+      ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
+      return canvas;
+    }
 
-      // Cari jam (format hh:mm atau h:mm)
-      let jam = text.match(/\b\d{1,2}[:.]\d{2}\b/);
+    async function processImage(img) {
+      // Crop area suhu (posisi kira2, bisa diatur sesuai foto thermometer)
+      let suhuCanvas = cropImage(img, 50, 60, 200, 60);  
+      let rhCanvas   = cropImage(img, 50, 130, 200, 60); 
 
-      // Cari suhu (format xx.x)
-      let suhu = text.match(/\b\d{2}\.\d\b/);
+      // OCR suhu
+      let suhuRes = await Tesseract.recognize(suhuCanvas, 'eng', {
+        tessedit_char_whitelist: '0123456789.'
+      });
+      let suhu = suhuRes.data.text.replace(/[^0-9.]/g, "").trim();
 
-      // Cari RH (angka diikuti % atau RH)
-      let rh = text.match(/\b\d{2,3}(?=\s*%|\s*RH)/);
+      // OCR RH
+      let rhRes = await Tesseract.recognize(rhCanvas, 'eng', {
+        tessedit_char_whitelist: '0123456789'
+      });
+      let rh = rhRes.data.text.replace(/[^0-9]/g, "").trim();
+
+      // Ambil jam dari timestamp foto (overlay kamera biasanya pojok bawah)
+      let jamRes = await Tesseract.recognize(img, 'eng', {
+        tessedit_char_whitelist: '0123456789:'
+      });
+      let jam = jamRes.data.text.match(/\b\d{1,2}[:.]\d{2}\b/);
+      jam = jam ? jam[0].replace(".", ":") : "??:??";
 
       // Tanggal otomatis hari ini
       let now = new Date();
@@ -44,11 +66,12 @@
       let mm = String(now.getMonth() + 1).padStart(2, '0');
       let yy = String(now.getFullYear()).slice(-2);
 
+      // Susun laporan
       let laporanTxt = 
         `Laporan suhu gudang cabang BDG016 (tanggal ${dd}/${mm}/${yy})\n` +
-        `JAM : ${jam ? jam[0].replace(".",":") : "??:??"}\n` +
-        `IN : ${suhu ? suhu[0] : "??"}\n` +
-        `RH : ${rh ? rh[0] : "??"}`;
+        `JAM : ${jam}\n` +
+        `IN : ${suhu || "??"}\n` +
+        `RH : ${rh || "??"}`;
 
       laporan.value = laporanTxt;
       navigator.clipboard.writeText(laporanTxt);
@@ -56,27 +79,22 @@
 
     function handleFile(file) {
       if (!file) return;
-      preview.src = URL.createObjectURL(file);
-
-      Tesseract.recognize(file, 'eng', {
-        tessedit_char_whitelist: '0123456789:.%RH',
-        logger: m => console.log(m)
-      }).then(({ data: { text } }) => {
-        parseOCR(text);
-      });
+      const img = new Image();
+      img.onload = () => {
+        preview.src = img.src;
+        processImage(img);
+      };
+      img.src = URL.createObjectURL(file);
     }
 
-    // Event Upload
     document.getElementById('upload').addEventListener('change', (e) => {
       handleFile(e.target.files[0]);
     });
 
-    // Event Kamera
     document.getElementById('camera').addEventListener('change', (e) => {
       handleFile(e.target.files[0]);
     });
 
-    // Tombol Kirim WhatsApp
     document.getElementById('send').addEventListener('click', () => {
       let text = encodeURIComponent(laporan.value);
       window.open("https://wa.me/?text=" + text, "_blank");
