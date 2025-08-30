@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Laporan Suhu Gudang</title>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+  <h2>Laporan Suhu Gudang Cabang BDG016</h2>
+
+  <input type="file" id="upload" accept="image/*"><br><br>
+  <img id="preview" width="250"><br><br>
+
+  <textarea id="laporan" rows="6" cols="40" readonly></textarea><br><br>
+  <button id="send">Kirim ke WhatsApp</button>
+
+  <script>
+    const upload = document.getElementById('upload');
+    const preview = document.getElementById('preview');
+    const laporan = document.getElementById('laporan');
+
+    function parseOCR(text) {
+      // Cari nilai jam, IN, RH
+      let jam = text.match(/\d{2}[:.]\d{2}/); 
+      let suhu = text.match(/26\.0|25\.\d|\d{2}\.\d/); 
+      let rh = text.match(/\d{2}(?=\s*%)/);
+
+      // Tanggal otomatis hari ini (format dd/mm/yy)
+      let now = new Date();
+      let dd = String(now.getDate()).padStart(2, '0');
+      let mm = String(now.getMonth() + 1).padStart(2, '0');
+      let yy = String(now.getFullYear()).slice(-2);
+
+      let laporanTxt = 
+        `Laporan suhu gudang cabang BDG016 (tanggal ${dd}/${mm}/${yy})\n` +
+        `JAM : ${jam ? jam[0].replace(".",":") : "??:??"}\n` +
+        `IN : ${suhu ? suhu[0] : "??"}\n` +
+        `RH : ${rh ? rh[0] : "??"}`;
+
+      laporan.value = laporanTxt;
+      navigator.clipboard.writeText(laporanTxt);
+    }
+
+    upload.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      preview.src = URL.createObjectURL(file);
+
+      Tesseract.recognize(file, 'eng', {
+        logger: m => console.log(m)
+      }).then(({ data: { text } }) => {
+        console.log("OCR Result:", text);
+        parseOCR(text);
+      });
+    });
+
+    document.getElementById('send').addEventListener('click', () => {
+      let text = encodeURIComponent(laporan.value);
+      window.open("https://wa.me/?text=" + text, "_blank");
+    });
+  </script>
+</body>
+</html>
