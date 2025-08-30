@@ -9,24 +9,36 @@
 <body>
   <h2>Laporan Suhu Gudang Cabang BDG016</h2>
 
+  <!-- Opsi Upload -->
+  <p><b>Pilih foto dari galeri:</b></p>
   <input type="file" id="upload" accept="image/*"><br><br>
+
+  <!-- Opsi Kamera -->
+  <p><b>Ambil foto langsung dari kamera:</b></p>
+  <input type="file" id="camera" accept="image/*" capture="environment"><br><br>
+
   <img id="preview" width="250"><br><br>
 
   <textarea id="laporan" rows="6" cols="40" readonly></textarea><br><br>
   <button id="send">Kirim ke WhatsApp</button>
 
   <script>
-    const upload = document.getElementById('upload');
     const preview = document.getElementById('preview');
     const laporan = document.getElementById('laporan');
 
     function parseOCR(text) {
-      // Cari nilai jam, IN, RH
-      let jam = text.match(/\d{2}[:.]\d{2}/); 
-      let suhu = text.match(/26\.0|25\.\d|\d{2}\.\d/); 
-      let rh = text.match(/\d{2}(?=\s*%)/);
+      console.log("OCR Raw:", text);
 
-      // Tanggal otomatis hari ini (format dd/mm/yy)
+      // Cari jam (format hh:mm atau h:mm)
+      let jam = text.match(/\b\d{1,2}[:.]\d{2}\b/);
+
+      // Cari suhu (format xx.x)
+      let suhu = text.match(/\b\d{2}\.\d\b/);
+
+      // Cari RH (angka diikuti % atau RH)
+      let rh = text.match(/\b\d{2,3}(?=\s*%|\s*RH)/);
+
+      // Tanggal otomatis hari ini
       let now = new Date();
       let dd = String(now.getDate()).padStart(2, '0');
       let mm = String(now.getMonth() + 1).padStart(2, '0');
@@ -42,19 +54,29 @@
       navigator.clipboard.writeText(laporanTxt);
     }
 
-    upload.addEventListener('change', (e) => {
-      const file = e.target.files[0];
+    function handleFile(file) {
       if (!file) return;
       preview.src = URL.createObjectURL(file);
 
       Tesseract.recognize(file, 'eng', {
+        tessedit_char_whitelist: '0123456789:.%RH',
         logger: m => console.log(m)
       }).then(({ data: { text } }) => {
-        console.log("OCR Result:", text);
         parseOCR(text);
       });
+    }
+
+    // Event Upload
+    document.getElementById('upload').addEventListener('change', (e) => {
+      handleFile(e.target.files[0]);
     });
 
+    // Event Kamera
+    document.getElementById('camera').addEventListener('change', (e) => {
+      handleFile(e.target.files[0]);
+    });
+
+    // Tombol Kirim WhatsApp
     document.getElementById('send').addEventListener('click', () => {
       let text = encodeURIComponent(laporan.value);
       window.open("https://wa.me/?text=" + text, "_blank");
